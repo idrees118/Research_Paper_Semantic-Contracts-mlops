@@ -1,228 +1,256 @@
-from pathlib import Path
+<div align="center">
 
-readme = r'''<div align="center">
+# Semantic Contracts for Data Pipeline Reliability
 
-# Semantic Contracts for Relational Data Validation in ML Pipelines
-
-### Mutation-based evaluation of deterministic data-quality checks at the ETL → model-training boundary
+### Detecting silent ETL failures that schema checks and drift monitoring can miss
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![pandas](https://img.shields.io/badge/pandas-2.0%2B-150458?logo=pandas&logoColor=white)](https://pandas.pydata.org/)
-[![SciPy](https://img.shields.io/badge/SciPy-1.10%2B-8CAAE6?logo=scipy&logoColor=white)](https://scipy.org/)
-[![pytest](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
-[![MLOps](https://img.shields.io/badge/focus-MLOps%20%7C%20Data%20Quality-2F6B3C)](#why-this-matters)
-[![Research](https://img.shields.io/badge/manuscript-under%20review-D97706)](#research-status)
+[![Data Engineering](https://img.shields.io/badge/Data-Engineering-0A66C2)](https://github.com/idrees118/Research_Paper_Semantic-Contracts-mlops)
+[![Data Quality](https://img.shields.io/badge/Data-Quality-2E8B57)](https://github.com/idrees118/Research_Paper_Semantic-Contracts-mlops)
+[![MLOps](https://img.shields.io/badge/MLOps-Pipeline%20Validation-6F42C1)](https://github.com/idrees118/Research_Paper_Semantic-Contracts-mlops)
+[![Tests](https://img.shields.io/badge/Tests-pytest-0A9EDC?logo=pytest&logoColor=white)](https://docs.pytest.org/)
+[![Research](https://img.shields.io/badge/Research-Manuscript%20Under%20Review-D97706)](#research)
 
-**Reference implementation and reproducibility repository for**
-
-*Semantic Contracts for Detecting Relational Faults in Machine Learning Pipelines:  
-A Mutation-Based Empirical Evaluation*
+**Python · ETL Validation · Data Quality · Mutation Testing · MLOps · Reproducible Research**
 
 </div>
 
 ---
 
-## Overview
+## The problem
 
-Production data pipelines can fail without breaking the schema.
+A data pipeline can run successfully and still produce the wrong data.
 
-A column can keep the correct numeric type while containing the wrong field. Timestamps can shift while feature distributions remain unchanged. A pipeline can duplicate records, drop entities, apply the wrong unit conversion, or preserve individually plausible columns while corrupting the relationships between them.
+The schema may be valid.  
+The columns may still be numeric.  
+Missing-value checks may pass.  
+Distribution monitoring may show little change.
 
-This project studies that class of failure.
+But the **meaning of the data can still be broken**.
 
-It implements **semantic contracts**: deterministic, domain-aware checks that test whether important relationships in an incoming dataset still hold relative to an accepted reference dataset. The contracts complement ordinary schema validation and statistical drift monitoring by checking properties such as:
+Examples:
 
-- cross-column relationships,
-- temporal alignment and ordering,
-- entity completeness,
-- row-count consistency,
-- scaling and ratio relationships,
-- categorical-frequency consistency,
-- local signal-quality patterns.
+```text
+Open / Close columns swapped
+        ↓
+Schema still valid
 
-The repository evaluates those checks through **mutation testing**: known ETL-style faults are injected into clean datasets and four validation strategies are compared under a controlled, reproducible protocol.
+Timestamp shifted by 7 days
+        ↓
+Feature distributions unchanged
 
-> **Scope:** this work does not claim to invent cross-column validation. Existing systems such as Great Expectations, Deequ, dbt, and Soda can express custom relational checks. The contribution is the fault formalisation, reusable invariant families, mutation taxonomy, and empirical evaluation protocol.
+Five stores missing from an ETL batch
+        ↓
+Remaining rows still look normal
 
----
+Weekly sales aggregated twice
+        ↓
+Pipeline finishes successfully
+```
 
-## Why this matters
-
-Traditional validation layers answer different questions:
-
-| Validation layer | Main question | Typical examples |
-|---|---|---|
-| **Schema validation** | Is the dataset structurally valid? | columns, dtypes, nulls, allowed ranges |
-| **Statistical monitoring** | Has the observed distribution changed? | KS, Jensen–Shannon divergence, PSI, correlation/ACF monitoring |
-| **Semantic contracts** | Does the data still mean what the pipeline says it means? | column identity, time alignment, entity completeness, cross-field relationships |
-
-A robust production pipeline may need more than one layer. A batch can satisfy its schema and retain plausible marginal statistics while still violating a domain relationship that matters downstream.
-
-This repository focuses on that relational layer.
+This project explores how to detect these kinds of **silent relational failures before corrupted data reaches downstream analytics or machine-learning workflows**.
 
 ---
 
-## Evaluation workflow
+## What I built
+
+I implemented a validation framework based on **semantic contracts**.
+
+A semantic contract is a deterministic rule that checks whether an important relationship in an incoming dataset still holds relative to an accepted reference dataset.
+
+Instead of checking only individual columns, the framework can validate relationships such as:
+
+- column identity and cross-column consistency
+- timestamp alignment and ordering
+- expected entities and groups
+- row-count relationships
+- unit and scaling consistency
+- categorical-frequency behaviour
+- time-series structure
+- duplication and missing-segment behaviour
+
+The framework contains **25 domain-aware contracts** and evaluates them using controlled mutation testing.
+
+---
+
+## Pipeline concept
 
 ```mermaid
 flowchart LR
-    A["Clean reference dataset"] --> C["Controlled mutation<br/>or clean control"]
-    B["Incoming / test dataset"] --> C
-    C --> D["Semantic validator"]
-    C --> E["Ensemble statistical comparator"]
-    C --> F["KS drift comparator"]
-    C --> G["GE-style expectation comparator"]
+    A["Source Data"] --> B["ETL / ELT"]
+    B --> C["Schema Validation"]
+    C --> D["Statistical Monitoring"]
+    D --> E["Semantic Contracts"]
 
-    D --> H["Detection + attribution"]
-    E --> H
-    F --> H
-    G --> H
+    E -->|Pass| F["Downstream Processing"]
+    E -->|Fail| G["Stop Pipeline"]
+    G --> H["Alert / Investigate"]
 
-    H --> I["Mutation-type analysis"]
-    I --> J["Detection rate + Wilson CI"]
-    I --> K["Exact McNemar tests"]
-    I --> L["Semantic precision"]
+    F --> I["Feature Engineering"]
+    I --> J["Model Training / Analytics"]
 ```
 
-The primary benchmark contains **28 fault types** evaluated under **4 random seeds**, producing **112 seed-level executions**. The repeated seeds are used as a stability check; the primary inferential unit is the **mutation type (N = 28)**.
+The idea is not to replace schema or drift checks.
+
+It is to add another validation layer for relationships that those checks may not explicitly represent.
 
 ---
 
-## Fault taxonomy
+## Mutation-testing approach
 
-The controlled benchmark contains **27 categorised semantic mutations plus one aggregation case study**.
+To evaluate the validation layer, I created controlled ETL-style faults with known ground truth.
 
-| Fault family | Count | Representative failure modes |
-|---|---:|---|
-| **Scaling** | 6 | unit conversion errors, systematic under/over-scaling, calibration mistakes |
-| **Temporal** | 6 | timestamp shifts, one-day lags, reversed series, within-day shuffling |
-| **Structural** | 9 | column swaps, missing entities, row loss, repeated data, sign errors |
-| **Quality** | 6 | spikes, extreme outliers, frozen segments, sparse zeroing, duplicate rows, noise |
-| **Aggregation case study** | 1 | repeated aggregation causing 7× sales inflation |
-| **Total** | **28** | |
+The benchmark contains:
 
-Examples include swapping stock `Open` and `Close`, shifting retail dates by ±7 days, dropping stores from a batch, repeating the power dataset, zeroing trading volume, injecting sensor spikes, and duplicating ETL output rows.
-
----
-
-## Semantic contract design
-
-The implementation contains **25 deterministic, domain-aware contracts** organised around reusable invariant families.
-
-| Invariant family | What it checks | Example |
-|---|---|---|
-| **Ratio consistency** | systematic multiplicative/additive deviations | unit or scale changes |
-| **Temporal ordering** | displacement, reversal, or local ordering changes | date shifts and shuffled time series |
-| **Structural correlation** | stable identities of related columns | detecting swapped fields |
-| **Entity completeness** | preservation of expected entity membership | missing stores |
-| **Frequency invariance** | stability of categorical proportions | encoding/category swaps |
-
-The implementation is intentionally lightweight: the contracts do not require model retraining, labelled failure examples, or GPU resources.
-
----
-
-## Experimental design
-
-### Primary datasets
-
-| Dataset | Evaluated snapshot | Role |
-|---|---:|---|
-| **Walmart Retail Sales** | 6,435 store-week observations, 45 stores | retail / multi-entity temporal data |
-| **AAPL daily OHLCV** | 1,259 trading days | financial time series / cross-column relationships |
-| **UCI Household Power Consumption** | 996,010 one-minute measurements | high-frequency sensor data |
-
-Additional evaluation uses:
-
-- **UCI Wine Quality** as an extra clean control.
-- **UCI Adult** as a proof-of-concept transfer domain with categorical features and no temporal structure.
-
-### Validators compared
-
-1. **Semantic Validator** — the proposed relational-contract layer.
-2. **Ensemble Statistical** — KS + Jensen–Shannon divergence + PSI + correlation-matrix difference + ACF difference, using OR voting.
-3. **KS Drift** — per-column two-sample Kolmogorov–Smirnov testing with Bonferroni correction.
-4. **GE-style expectation suite** — a hand-coded comparator inspired by common expectation patterns such as row count, mean, variance, null rate, range, categorical completeness, and sign checks.
-
-> The GE-style comparator is **not** a benchmark of the full Great Expectations library or its custom-expectation capability.
-
----
-
-## Main results
-
-The revised manuscript analyses detection at the **mutation-type level**, not by treating the 112 seed executions as independent observations.
-
-| Validator | Detected fault types | Detection rate | 95% Wilson CI |
-|---|---:|---:|---:|
-| **Semantic Validator** | **27 / 28** | **96.4%** | **82.3%–99.4%** |
-| Ensemble Statistical | 14 / 28 | 50.0% | 32.6%–67.4% |
-| KS Drift | 12 / 28 | 42.9% | 26.5%–60.9% |
-| GE-style suite | 10 / 28 | 35.7% | 20.7%–54.2% |
-
-Exact mutation-type McNemar comparisons:
-
-| Comparison | p-value |
+| | |
 |---|---:|
-| Semantic vs. Ensemble | **0.000244** |
-| Semantic vs. KS | **0.000061** |
-| Semantic vs. GE-style | **0.000015** |
+| Semantic contracts | **25** |
+| Controlled fault types | **28** |
+| Random seeds | **4** |
+| Seed-level executions | **112** |
+| Primary datasets | **3** |
+| Validation approaches compared | **4** |
 
-Additional findings:
+The faults cover four main families plus one aggregation case study:
 
-- **Semantic precision:** 96.3% (26/27 detected fault types attributed to the intended family).
-- **Retrospective robustness partition:** 19/19 development fault types and 8/9 held-out fault types detected; Fisher's exact test did not establish a difference (`p = 0.321`).
-- **UCI Adult transfer:** all three transfer mutations were detected by the semantic validator; the categorical workclass encoding flip was detected under all four seeds while the evaluated comparators missed it.
-- **Clean controls:** no semantic-contract alerts were observed on five evaluated clean-domain instances. This is **preliminary specificity evidence**, not a deployment-level false-positive estimate.
-
-These results quantify coverage on the evaluated benchmark. They should not be interpreted as evidence that semantic contracts detect every production data fault.
+| Fault family | Examples |
+|---|---|
+| **Scaling** | unit conversion errors, incorrect calibration, systematic scaling |
+| **Temporal** | timestamp shifts, lagged dates, reversed series, shuffled records |
+| **Structural** | column swaps, missing entities, missing segments, repeated data |
+| **Quality** | spikes, extreme outliers, frozen values, duplicate rows, sparse zeroing |
+| **Aggregation** | repeated aggregation producing inflated values |
 
 ---
 
-## Data engineering and MLOps relevance
+## Example failure
 
-Semantic contracts are designed to sit at the boundary between **ETL output and downstream model training or analytics**.
+Consider a stock-data pipeline:
 
-A typical deployment pattern would be:
+```text
+Before ETL error
 
-```mermaid
-flowchart LR
-    A["Source systems"] --> B["ETL / ELT pipeline"]
-    B --> C["Schema checks"]
-    C --> D["Statistical monitoring"]
-    D --> E["Semantic contracts"]
-    E -->|pass| F["Feature engineering / training"]
-    E -->|fail| G["Block downstream step"]
-    G --> H["Alert + investigation"]
+Open      Close
+150.20    151.10
+151.00    150.80
+
+
+After accidental column swap
+
+Open      Close
+151.10    150.20
+150.80    151.00
 ```
 
-For an orchestrated workflow, the validation step could be placed immediately upstream of a training or feature-generation task. A failed contract can prevent downstream execution and surface the violated invariant for investigation.
+The schema is unchanged.
 
-The current study evaluates the **validation mechanism and detection behaviour**. It does not benchmark production orchestration overhead or claim a deployed Airflow/Prefect integration.
+Both columns are still numeric.
+
+Their distributions may also be very similar.
+
+But their **relationship and meaning are wrong**.
+
+A semantic contract can explicitly test that relationship rather than relying only on marginal statistics.
 
 ---
 
-## Repository structure
+## Evaluation
+
+The framework was evaluated across three different data domains:
+
+| Dataset | Scale | What it tests |
+|---|---:|---|
+| **Walmart Retail Sales** | 6,435 store-week observations | entities, dates, sales, duplication, aggregation |
+| **AAPL OHLCV** | 1,259 trading days | temporal and cross-column relationships |
+| **Household Power Consumption** | 996,010 measurements | high-frequency sensor and temporal behaviour |
+
+A separate **UCI Adult** experiment was also used as a proof-of-concept transfer to categorical data.
+
+---
+
+## Results
+
+Primary results are calculated at the **28 mutation-type level**.  
+The four seeds are stability repetitions rather than independent observations.
+
+| Validator | Faults detected | Detection rate |
+|---|---:|---:|
+| **Semantic Contracts** | **27 / 28** | **96.4%** |
+| Ensemble Statistical | 14 / 28 | 50.0% |
+| KS Drift | 12 / 28 | 42.9% |
+| GE-style Expectations | 10 / 28 | 35.7% |
+
+**Semantic-contract 95% Wilson CI:** 82.3%–99.4%
+
+The semantic validator also achieved **96.3% semantic precision**, meaning that 26 of the 27 detected fault types were attributed to the intended detector family.
+
+The study additionally evaluates fault mechanisms derived from public issue reports involving tools such as **scikit-learn, dbt, pandas, Apache Spark, Airbyte and Polars**.
+
+> These results describe performance on the evaluated benchmark. They are not a claim that semantic contracts detect every possible production failure.
+
+---
+
+## Why this is relevant to Data Engineering
+
+For me, the main engineering question behind this project was:
+
+> **How do we stop technically valid but semantically corrupted data from moving further through a pipeline?**
+
+That connects directly to several Data Engineering concerns:
+
+**Data quality**
+
+Validate not only whether values are present, but whether relationships between them remain correct.
+
+**Pipeline testing**
+
+Inject controlled failures and measure whether the validation layer actually catches them.
+
+**ETL reliability**
+
+Detect issues such as duplication, missing entities, incorrect transformations and timestamp errors before downstream use.
+
+**Data contracts**
+
+Express expectations about what data should mean, not only how it should be typed.
+
+**MLOps**
+
+Use validation as a gate between an incoming ETL batch and downstream feature engineering or model training.
+
+**Reproducibility**
+
+Keep mutations, thresholds, experiment configuration, statistical analysis and outputs version-controlled.
+
+---
+
+## Project architecture
 
 ```text
 Research_Paper_Semantic-Contracts-mlops/
 │
-├── main.py                         # Single CLI entry point
+├── main.py
+│
 ├── configs/
-│   └── experiment.yaml             # Seeds, thresholds, dataset paths, evaluation config
+│   └── experiment.yaml
 │
 ├── src/
 │   ├── mutations/
-│   │   ├── operators.py            # Fault-injection implementations
-│   │   └── registry.py             # Mutation registry and metadata
+│   │   ├── operators.py
+│   │   └── registry.py
+│   │
 │   ├── validators/
-│   │   ├── contracts.py            # Semantic contract implementations
-│   │   └── semantic_validator.py   # Contract execution + attribution
+│   │   ├── contracts.py
+│   │   └── semantic_validator.py
+│   │
 │   ├── baselines/
-│   │   ├── ensemble_baseline.py    # Multi-signal statistical comparator
-│   │   ├── ks_drift_baseline.py    # KS comparator
-│   │   └── ge_baseline.py          # GE-style expectation comparator
+│   │   ├── ensemble_baseline.py
+│   │   ├── ks_drift_baseline.py
+│   │   └── ge_baseline.py
+│   │
 │   └── evaluation/
-│       ├── runner.py               # Experiment orchestration
-│       └── metrics.py              # Detection, Wilson CI, McNemar, precision
+│       ├── runner.py
+│       └── metrics.py
 │
 ├── scripts/
 │   ├── prepare_datasets.py
@@ -233,100 +261,95 @@ Research_Paper_Semantic-Contracts-mlops/
 │   └── wine_fpr.py
 │
 ├── tests/
-│   └── test_pipeline.py            # Unit, smoke, integration, and mini end-to-end tests
+│   └── test_pipeline.py
 │
 ├── data/
-│   └── processed/                  # Archived evaluated dataset snapshots
-│
-├── experiments/
-│   └── results/                    # Generated and archived result tables
-│
-├── figure1.py
-├── figure2.py
+├── experiments/results/
 ├── requirements.txt
 ├── setup.py
 └── pytest.ini
 ```
 
+The code is separated into **fault generation, validation, baseline methods and evaluation**, rather than placing the full experiment inside one notebook.
+
 ---
 
-## Quick start
+## Testing
 
-### 1. Clone the repository
+The repository includes **37 tests** covering:
+
+- semantic contracts
+- mutation operators
+- statistical metrics
+- baseline validators
+- clean-data behaviour
+- mutation registry integrity
+- semantic-validator integration
+- mini end-to-end experiment execution
+
+Run them with:
+
+```bash
+python main.py --test
+```
+
+or:
+
+```bash
+pytest tests/ -v
+```
+
+---
+
+## Run the project
+
+Clone the repository:
 
 ```bash
 git clone https://github.com/idrees118/Research_Paper_Semantic-Contracts-mlops.git
 cd Research_Paper_Semantic-Contracts-mlops
 ```
 
-### 2. Create an isolated environment
+Create an environment:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 ```
 
-Windows:
-
-```powershell
-.venv\Scripts\activate
-```
-
-### 3. Install
-
-For a development/reproduction environment:
-
-```bash
-pip install -e ".[dev]"
-```
-
-or:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Run the tests
-
-```bash
-python main.py --test
-```
-
-The repository currently defines **37 unit, smoke, integration, and mini end-to-end tests** covering metrics, contracts, baselines, mutation registration, validator behaviour, and experiment execution.
-
----
-
-## Reproduce the controlled benchmark
-
-Run each stage explicitly:
+Prepare the datasets:
 
 ```bash
 python main.py --prepare
+```
+
+Run the controlled experiment:
+
+```bash
 python main.py --experiment
+```
+
+Run the retrospective held-out analysis:
+
+```bash
 python main.py --held-out
 ```
 
-or run the main sequence:
+Or run the main workflow:
 
 ```bash
 python main.py --all
 ```
 
-Use custom seeds if required:
-
-```bash
-python main.py --experiment --seeds 42 123 456 789
-```
-
-Suppress per-mutation console output:
-
-```bash
-python main.py --experiment --quiet
-```
-
 ---
 
-## Reproduce supporting analyses
+## Reproduce additional analyses
 
 ```bash
 # Detector-family ablation
@@ -335,130 +358,87 @@ python scripts/ablation_analysis.py
 # UCI Adult transfer experiment
 python scripts/adult_validation.py
 
-# Additional Wine clean-control evaluation
+# Additional clean-control analysis
 python scripts/wine_fpr.py
+```
 
-# Generate manuscript figures
-python figure1.py
-python figure2.py
+Experiment settings such as seeds and validation thresholds are centralised in:
+
+```text
+configs/experiment.yaml
 ```
 
 ---
 
-## Main output artifacts
+## Tech stack
 
-Results are written to `experiments/results/`.
-
-| File | Purpose |
+| Area | Technologies |
 |---|---|
-| `raw_results.csv` | seed-level execution records |
-| `mutation_results.csv` | mutation-only execution records |
-| `per_mutation_detection_rates.csv` | detection summaries by mutation type |
-| `detection_summary.csv` | validator-level detection summary |
-| `mcnemar_results.csv` | paired exact-comparison results |
-| `semantic_precision.csv` | semantic attribution precision |
-| `per_category_breakdown.csv` | fault-family detection summary |
-| `mutation_partition.csv` | development / retrospective held-out partition |
-| `held_out_evaluation.csv` | robustness-partition results |
-| `adult_validation_results.csv` | UCI Adult transfer outcomes |
-| `adult_combined_summary.csv` | transfer-domain summary |
-| `adult_fpr_results.csv` | Adult clean-control results |
-| `wine_fpr_results.csv` | Wine clean-control results |
+| Language | Python |
+| Data processing | pandas, NumPy |
+| Statistical analysis | SciPy |
+| Configuration | YAML |
+| Testing | pytest |
+| Engineering concepts | ETL validation, data contracts, mutation testing |
+| ML infrastructure | MLOps, pre-training data validation |
+| Reproducibility | versioned configs, experiment outputs, deterministic mutations |
 
 ---
 
-## Dataset provenance
+## Data sources
 
-The evaluated snapshots are retained for reproducibility. Original sources remain subject to their respective terms and licences.
+**Walmart Retail Sales**  
+https://www.kaggle.com/c/walmart-recruiting-store-sales-forecasting
 
-- **Walmart Recruiting — Store Sales Forecasting:**  
-  https://www.kaggle.com/c/walmart-recruiting-store-sales-forecasting
+**Apple AAPL Historical Data — Yahoo Finance**  
+https://finance.yahoo.com/quote/AAPL/history/
 
-- **Yahoo Finance — Apple (AAPL) historical data:**  
-  https://finance.yahoo.com/quote/AAPL/history/
+**UCI Household Electric Power Consumption**  
+https://doi.org/10.24432/C58K54
 
-- **UCI Individual Household Electric Power Consumption:**  
-  https://doi.org/10.24432/C58K54
+**UCI Wine Quality**  
+https://doi.org/10.24432/C56S3T
 
-- **UCI Wine Quality:**  
-  https://doi.org/10.24432/C56S3T
-
-- **UCI Adult:**  
-  https://doi.org/10.24432/C5XW20
+**UCI Adult**  
+https://doi.org/10.24432/C5XW20
 
 ---
 
-## Reproducibility notes
-
-- The primary controlled benchmark contains **28 fault types × 4 seeds = 112 executions**.
-- Seeds control stochastic operators; deterministic mutations produce the same transformed data across seeds.
-- The four executions of a mutation type are **stability repetitions**, not independent inferential samples.
-- Primary confidence intervals and paired tests in the revised manuscript are therefore computed at **N = 28 mutation types**.
-- Contract thresholds and comparator settings are centralised in `configs/experiment.yaml`.
-- Archived result tables are stored under `experiments/results/`.
-
----
-
-## Research status
+## Research
 
 This repository supports the manuscript:
 
-> **Semantic Contracts for Detecting Relational Faults in Machine Learning Pipelines: A Mutation-Based Empirical Evaluation**
+**Semantic Contracts for Detecting Relational Faults in Machine Learning Pipelines: A Mutation-Based Empirical Evaluation**
 
-**Status:** manuscript under review.
+**Current status:** manuscript under review.
 
-Citation metadata and a DOI will be added here after publication.
+Authors:
 
-### Authors
+**Muhammad Idrees · Feras Al-Obeidat · Adnan Amin · Salma Noor · Fernando Moreira**
 
-Muhammad Idrees · Feras Al-Obeidat · Adnan Amin · Salma Noor · Fernando Moreira
-
----
-
-## Limitations
-
-This repository should be read as a controlled empirical evaluation, not a production certification benchmark.
-
-The mutation set is authored and synthetic, although its mechanisms are motivated by documented ETL and ML-pipeline failures. Contract authoring requires domain knowledge, threshold maintenance, and handling of legitimate exceptions. The clean-control sample is small, so the study does not establish a deployment-level false-positive rate. The retrospective held-out partition is not a prospectively preregistered generalisation test, and the Adult experiment is a proof of concept rather than evidence of broad cross-domain transfer.
-
-These limitations are part of the experimental design and are reported explicitly rather than hidden behind the headline detection rate.
+The study positions semantic contracts as a **complementary validation layer**, not as a replacement for tools such as Great Expectations, Deequ, dbt, Soda, or statistical monitoring systems. :chatgpt-content-reference{index="0"}
 
 ---
 
-## Using semantic contracts in another domain
+## Key takeaway
 
-A practical extension workflow is:
+A reliable data pipeline should not only ask:
 
-1. Identify domain relationships that must remain valid after ETL.
-2. Map each relationship to an invariant family.
-3. Define domain-appropriate columns, keys, tolerances, and exceptions.
-4. Add the contract to the validator registry.
-5. Design mutation operators representing realistic failure modes.
-6. Test the contract against both mutated and clean controls.
-7. Place the validator before downstream training or analytics.
+> **“Does this batch have the correct schema?”**
 
-The key idea is simple: **validate relationships that the pipeline is expected to preserve, not only the individual columns it produces.**
+It should also be able to ask:
 
----
+> **“Do the relationships inside this data still make sense?”**
 
-## Licence and reuse
-
-Dataset licences and terms remain with their original providers.
-
-A repository-wide software licence is not currently declared in this repository. If the code is intended for general reuse beyond research replication, add an explicit software licence (for example MIT, BSD-3-Clause, or Apache-2.0) after confirming the preferred terms with all contributors.
+That is the problem this project explores.
 
 ---
 
 <div align="center">
 
-**Data quality · ETL reliability · Mutation testing · MLOps · Reproducible research**
+### Data Engineering · Data Quality · ETL Reliability · MLOps · Mutation Testing
 
-[Repository](https://github.com/idrees118/Research_Paper_Semantic-Contracts-mlops) ·
-[Issues](https://github.com/idrees118/Research_Paper_Semantic-Contracts-mlops/issues)
+[View Repository](https://github.com/idrees118/Research_Paper_Semantic-Contracts-mlops) ·
+[Open an Issue](https://github.com/idrees118/Research_Paper_Semantic-Contracts-mlops/issues)
 
 </div>
-'''
-
-path = Path("/mnt/data/README_PROPOSED_Semantic_Contracts.md")
-path.write_text(readme, encoding="utf-8")
-print(path)
