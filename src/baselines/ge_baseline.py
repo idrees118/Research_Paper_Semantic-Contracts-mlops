@@ -1,10 +1,10 @@
 """
 src/baselines/ge_baseline.py
 ==============================
-Great Expectations Comprehensive Baseline.
+GE-style statistical expectation baseline.
 
-This baseline mimics what a practitioner would configure using the
-Great Expectations (GE) framework:  a suite of purely statistical
+This standalone baseline approximates what a practitioner might configure
+using the Great Expectations (GE) framework: a suite of statistical
 "expectations" calibrated once on clean reference data, then evaluated
 against every incoming (possibly mutated) dataset.
 
@@ -23,8 +23,9 @@ in production to avoid alert fatigue:
   - Column std: within [50 %, 200 %] of baseline std
   - Zero fraction: increase by ≤ 20 pp before flagging
 
-A mutation is detected if ANY expectation fails (OR logic), consistent
-with how GE suites are typically configured in production.
+A mutation is detected if any implemented expectation fails (OR logic). This
+code does not import or execute the Great Expectations package and should be
+reported as a GE-style baseline, not as a benchmark of the library itself.
 
 References
 ----------

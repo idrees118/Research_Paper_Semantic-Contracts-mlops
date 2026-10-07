@@ -212,10 +212,16 @@ def test_corr_matrix(
     # Use the minimum-length shared prefix to ensure equal sample count
     n = min(len(a), len(b))
     try:
-        ca = np.corrcoef(a.values[:n].T)
-        cb = np.corrcoef(b.values[:n].T)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ca = np.corrcoef(a.values[:n].T)
+            cb = np.corrcoef(b.values[:n].T)
     except Exception:
         return {"test": "corr_matrix", "detected": False, "score": None}
+
+    # Constant columns have undefined Pearson correlations. Treat those cells
+    # as zero instead of propagating NaNs into the Frobenius score.
+    ca = np.nan_to_num(ca, nan=0.0, posinf=0.0, neginf=0.0)
+    cb = np.nan_to_num(cb, nan=0.0, posinf=0.0, neginf=0.0)
 
     diff = ca - cb
     frob = float(np.linalg.norm(diff, ord="fro")) / len(cols)
