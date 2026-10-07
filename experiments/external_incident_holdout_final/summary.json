@@ -1,0 +1,8 @@
+{
+  "n_incidents": 4,
+  "semantic_detected": 3,
+  "ensemble_detected": 0,
+  "ks_detected": 0,
+  "ge_detected": 0,
+  "semantic_clean_control_flags": 0
+}

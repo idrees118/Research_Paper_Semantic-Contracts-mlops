@@ -1,0 +1,91 @@
+{
+  "protocol_version": "2.0",
+  "generated_at_utc": "2026-08-30T14:11:12.878972+00:00",
+  "design": "Existing contracts and thresholds are frozen; no outcome-dependent tuning is permitted.",
+  "scope": "Incident-derived deterministic reproductions, not original production datasets.",
+  "selection": "Author-selected convenience set of public issue reports; not random or representative.",
+  "interpretation": "Report all case outcomes descriptively. Do not treat the four cases as independent population samples or use them to estimate production-wide detection performance.",
+  "challenge_script_sha256": "f7a5335e01a7c8d2ad0a86714652cc1640d6c698f4f56e09b578c3de9931cdad",
+  "contract_file_sha256": "0e4ebefdc8c912d62cf5f40111cf9b534123d325b71043882c2046791abcb46f",
+  "semantic_validator_sha256": "c602acf14e0fbcf946c53292308c5035f0faa328af4186d5938db934aafcc93d",
+  "source_data": {
+    "walmart": {
+      "path": "data/processed/walmart_clean.csv",
+      "sha256": "aad8aa0debd4d4b8ba6810d0b6f8f9231e85f6bd756e81d7c39e90fde9a6bee5",
+      "rows": 6435,
+      "columns": [
+        "Date",
+        "Store",
+        "Weekly_Sales",
+        "Holiday_Flag",
+        "Temperature",
+        "Fuel_Price",
+        "CPI",
+        "Unemployment"
+      ]
+    },
+    "stock": {
+      "path": "data/processed/stock_clean.csv",
+      "sha256": "0bed95baf2c7dbe16ca2f6d95bb4186c2ecf24c905378fd1acf3b7f5ed6caf37",
+      "rows": 1259,
+      "columns": [
+        "Date",
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Adj Close",
+        "Volume"
+      ]
+    },
+    "power": {
+      "path": "data/processed/power_clean.csv",
+      "sha256": "343d39c1b09cb9b120c229c0d756c767c5babbc4ce591c2f1568a495f96673e7",
+      "rows": 996010,
+      "columns": [
+        "DateTime",
+        "Global_active_power",
+        "Global_reactive_power",
+        "Voltage",
+        "Global_intensity",
+        "Sub_metering_1",
+        "Sub_metering_2",
+        "Sub_metering_3"
+      ]
+    }
+  },
+  "python": "3.12.11",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "pandas": "3.0.5",
+  "numpy": "2.5.2",
+  "incidents": [
+    {
+      "incident_id": "feature_order_mismatch",
+      "dataset": "stock",
+      "source": "https://github.com/scikit-learn/scikit-learn/issues/7242",
+      "reported_fault": "Prediction data used a different feature-column order than training data.",
+      "instantiation": "Exchange the positions, but not the labels or values, of Open and Close."
+    },
+    {
+      "incident_id": "null_key_duplicate_append",
+      "dataset": "walmart",
+      "source": "https://github.com/dbt-labs/dbt-core/issues/7873",
+      "reported_fault": "Rows with NULL unique-key components were appended instead of replaced.",
+      "instantiation": "Duplicate a deterministic 3% subset whose incident-only key is NULL."
+    },
+    {
+      "incident_id": "duplicate_aggregation_outputs",
+      "dataset": "walmart",
+      "source": "https://github.com/pandas-dev/pandas/issues/43067",
+      "reported_fault": "pd.concat created an invalid MultiIndex whose codes caused groupby to emit duplicate groups instead of one aggregated group.",
+      "instantiation": "Split 3% of Store-Date groups into two rows while preserving each group sum."
+    },
+    {
+      "incident_id": "timezone_conversion_error",
+      "dataset": "power",
+      "source": "https://issues.apache.org/jira/browse/SPARK-23715",
+      "reported_fault": "UTC conversion produced an incorrect timestamp because of timezone handling.",
+      "instantiation": "Shift every timestamp backward by seven hours, matching the documented example offset."
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "protocol_version": "1.0",
+  "generated_at_utc": "2026-08-31T19:36:25.548280+00:00",
+  "design": "Case list and deterministic transformations fixed before execution; existing contracts, thresholds, and baselines unchanged.",
+  "scope": "Author-conducted deterministic reproductions of externally reported mechanisms.",
+  "selection_rule": "Public issue report from a maintained data-processing project; explicit incorrect tabular output; mechanism maps deterministically to an existing study dataset; no duplicate of the first four challenge reports.",
+  "reporting_rule": "Retain and report all four outcomes; no post-result tuning or exclusions.",
+  "limitations": "Not an independent-party evaluation, not the reporters' original production data, and not a representative population sample.",
+  "challenge_script_sha256": "036f1d6c1668cc6ba83c6909e145c3cdaad4809bc1e7fe49d9c4466262adf8c4",
+  "base_evaluation_script_sha256": "f7a5335e01a7c8d2ad0a86714652cc1640d6c698f4f56e09b578c3de9931cdad",
+  "contract_file_sha256": "0e4ebefdc8c912d62cf5f40111cf9b534123d325b71043882c2046791abcb46f",
+  "semantic_validator_sha256": "c602acf14e0fbcf946c53292308c5035f0faa328af4186d5938db934aafcc93d",
+  "baseline_file_sha256": {
+    "ensemble": "4cbe7af01c2353b6662c88d1890cce60614db0a39a81fcf84866fe0ebf7541d0",
+    "ks": "467fd14383d2cf8ca55d8daa5f43f3c0c44ee610587df7df1874a617a88b93b9",
+    "ge": "8137f9f5ab6b1318c6933a2119dc9182f6ed010df253b16c7a5afb59765f44b1"
+  },
+  "source_data": {
+    "walmart": {
+      "path": "data/processed/walmart_clean.csv",
+      "sha256": "aad8aa0debd4d4b8ba6810d0b6f8f9231e85f6bd756e81d7c39e90fde9a6bee5",
+      "rows": 6435,
+      "columns": [
+        "Date",
+        "Store",
+        "Weekly_Sales",
+        "Holiday_Flag",
+        "Temperature",
+        "Fuel_Price",
+        "CPI",
+        "Unemployment"
+      ]
+    },
+    "stock": {
+      "path": "data/processed/stock_clean.csv",
+      "sha256": "0bed95baf2c7dbe16ca2f6d95bb4186c2ecf24c905378fd1acf3b7f5ed6caf37",
+      "rows": 1259,
+      "columns": [
+        "Date",
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Adj Close",
+        "Volume"
+      ]
+    },
+    "power": {
+      "path": "data/processed/power_clean.csv",
+      "sha256": "343d39c1b09cb9b120c229c0d756c767c5babbc4ce591c2f1568a495f96673e7",
+      "rows": 996010,
+      "columns": [
+        "DateTime",
+        "Global_active_power",
+        "Global_reactive_power",
+        "Voltage",
+        "Global_intensity",
+        "Sub_metering_1",
+        "Sub_metering_2",
+        "Sub_metering_3"
+      ]
+    }
+  },
+  "python": "3.12.11",
+  "platform": "macOS-26.5.2-arm64-arm-64bit",
+  "pandas": "3.0.5",
+  "incidents": [
+    {
+      "incident_id": "incremental_latest_record_replayed",
+      "dataset": "walmart",
+      "source": "https://github.com/airbytehq/airbyte/issues/14066",
+      "reported_fault": "Repeated incremental syncs with no new source data appended the most recent record again.",
+      "instantiation": "Append one exact copy of the deterministically selected latest Store-Date record."
+    },
+    {
+      "incident_id": "one_to_many_join_multiplication",
+      "dataset": "walmart",
+      "source": "https://github.com/pola-rs/polars/issues/13550",
+      "reported_fault": "A left join declared as one-to-one accepted a duplicate key on the right and unexpectedly multiplied matching output rows.",
+      "instantiation": "Duplicate every output row matching the smallest Store key, as would occur when that lookup key appears twice on the right."
+    },
+    {
+      "incident_id": "incremental_cursor_boundary_skip",
+      "dataset": "power",
+      "source": "https://github.com/airbytehq/airbyte/issues/14732",
+      "reported_fault": "A strict greater-than cursor boundary permanently skipped records inserted with a timestamp equal to the saved cursor.",
+      "instantiation": "Remove all records at the median observed timestamp, representing the equality-boundary records omitted by the next sync."
+    },
+    {
+      "incident_id": "missing_output_partition",
+      "dataset": "power",
+      "source": "https://issues.apache.org/jira/browse/SPARK-23895",
+      "reported_fault": "A failed executor left incomplete intermediate output, yet the job continued and loaded incomplete data into the destination.",
+      "instantiation": "Sort by timestamp, divide the output into 100 deterministic partitions, and omit partition 50."
+    }
+  ]
+}
